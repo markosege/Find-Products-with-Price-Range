@@ -1,0 +1,204 @@
+<div class="row">
+    <div class="col-md-8">
+        <form name="products_range_form" method="post" id="products_range_form" class="form"
+              data-hasrequired="<?= $block->escapeHtmlAttr(__('* Required Fields')) ?>"
+              data-mage-init='{"validation":{
+              "rules": {
+			"min_price": {
+				"required": true,
+        "validate-currency-dollar": true,
+        "validate-greater-than-zero": true
+			},
+      "max_price": {
+				"required": true,
+        "validate-currency-dollar": true,
+        "validate-greater-than-zero": true,
+        "validate-price-range": true
+			}
+		}
+              }}'>
+            <fieldset class="fieldset">
+                <fieldset class="fieldset row">
+                    <div class="fields col-md-6">
+                        <div class="field name required">
+                            <label class="label" for="title"><span><?= $block->
+                                    escapeHtmlAttr(__('Minimum Price')) ?></span></label>
+                            <div class="control">
+                                <input name="min_price" id="min_price" title="Minimum Price" value="" class="input-text" type="text"
+                                       data-validate="{required:true, 'required-number':true}">
+                            </div>
+                        </div>
+                        <div class="field name required">
+                            <label class="label" for="title"><span><?= $block->
+                                    escapeHtmlAttr(__('Maximum Price')) ?></span></label>
+                            <div class="control">
+                                <input name="max_price" id="max_price" title="Maximum Price" value="" class="input-text" type="text"
+                                       data-validate="{required:true, 'required-number':true}">
+                            </div>
+                        </div>
+                        <div class="field name required">
+                            <label class="label" for="title"><span><?= $block->escapeHtmlAttr(__('Sort By Price')) ?></span></label>
+                            <div class="control">
+                                <select class="select" name="sort_by" id="sort_by">
+                                    <option value="asc"><?php echo __('Ascending'); ?></option>
+                                    <option value="desc"><?php echo __('Descending'); ?></option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </fieldset>
+            </fieldset>
+            <div class="actions-toolbar">
+                <div class="primary">
+                    <button type="submit"
+                            id="search"
+                            title="<?php echo $this->escapeHtml(__('Search')) ?>"
+                            class="action submit primary">
+                        <span><?php echo __('Search'); ?></span>
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+<div id="validation_errors" class="mage-error block"></div>
+<div id="no_products_message" class="message notice">
+    <div>There are no products to display.</div>
+</div>
+<div class="table-wrapper products-range" style="display: none;">
+    <table class="data table table-products-range" id="products-range-table">
+        <caption class="table-caption"><?php echo __('Products') ?></caption>
+        <thead>
+        <tr>
+            <th scope="col" class="col id"><?php echo __('Thumbnail') ?></th>
+            <th scope="col" class="col date"><?php echo __('SKU') ?></th>
+            <th scope="col" class="col shipping"><?php echo __('Name') ?></th>
+            <th scope="col" class="col total"><?php echo __('Qty In Stock') ?></th>
+            <th scope="col" class="col status"><?php echo __('Price') ?></th>
+            <th scope="col" class="col actions"><?php echo __('Link') ?></th>
+        </tr>
+        </thead>
+        <tbody>
+        </tbody>
+    </table>
+</div>
+<script>
+    require(['jquery',
+        'mage/mage',
+        'mage/validation'], function($) {
+        $.extend(true, $.mage, {
+            /**
+             * Checks if {value} is greater than {from}
+             * and less than or equal to {to}
+             * @param {string} value
+             * @param {string} from
+             * @param {string} to
+             * @returns {boolean}
+             */
+            isBetweenExclusive: function (value, from, to) {
+                return ($.mage.isEmpty(from) || value > $.mage.parseNumber(from)) &&
+                    ($.mage.isEmpty(to) || value <= $.mage.parseNumber(to));
+            }
+        });
+
+        /**
+         * Checks if {v} is greater than the value of #min_price
+         * and less than or equal to 5 times that value
+         * @param {string} v
+         * @returns {boolean}
+         */
+        $.validator.addMethod('validate-price-range', function(v) {
+            var result = false;
+            var minPrice = $.mage.parseNumber($('#min_price').val());
+            if (!minPrice) {
+                this.priceRangeErrorMessage = $.mage.__('The "minimum price" is required.');
+                return result;
+            }
+            var currentValue = $.mage.parseNumber(v),
+                maxPrice = minPrice * 5;
+            result = $.mage.isBetweenExclusive(currentValue, minPrice, maxPrice);
+            if (result == false) {
+                this.priceRangeErrorMessage = $.mage.__(
+                    'The value must be greater than %1 and less than or equal to %2.'
+                ).replace('%1', minPrice).replace('%2', maxPrice);
+            }
+            return result;
+        }, function() {
+            return this.priceRangeErrorMessage;
+        });
+
+        /**
+         * Checks if {v} matches one of "asc" or "desc"
+         * @param {string} v
+         * @returns {boolean}
+         */
+        $.validator.addMethod('validate-sort-by', function(v) {
+            return v.match(/^(asc|desc)$/i);
+        }, $.mage.__('Invalid "sort by" value.'));
+        $('#products_range_form').on('submit', function(e) {
+            e.preventDefault();
+
+            // Validate form
+            if (!$('#products_range_form').validation()
+                || !$('#products_range_form').validation('isValid')
+            ) {
+                return false;
+            }
+
+            // Load grid data
+            $.ajax({
+                url: '<?php echo $this->getAjaxUrl(); ?>',
+                type: 'POST',
+                data: $(this).serialize(),
+                contentType: 'application/x-www-form-urlencoded',
+                showLoader: true,
+                beforeSend: function() {
+                    $('#validation_errors').empty();
+                    $('#products-range-table tbody').empty();
+                }
+            }).done(function(response) {
+                if (response.hasOwnProperty('error')) {
+                    $('#validation_errors').append('<p>' + response.error + '</p>');
+                }
+
+                if (response.length > 0) {
+                    $('.table-wrapper.products-range').show();
+                    $('#no_products_message').hide();
+                    // Append data to table element
+                    var template = '<tr>\
+              <td data-th="<?php echo $block->escapeHtml(__('Thumbnail')) ?>" class="col thumbnail">\
+                  <img src="%1" name="%3" alt="%3" style="max-width:80px" />\
+              </td>\
+              <td data-th="<?php echo $block->escapeHtml(__('SKU')) ?>" class="col sku">%2</td>\
+              <td data-th="<?php echo $block->escapeHtml(__('Name')) ?>" class="col name">%3</td>\
+              <td data-th="<?php echo $block->escapeHtml(__('Qty In Stock')) ?>" class="col qty">%4</td>\
+              <td data-th="<?php echo $block->escapeHtml(__('Price')) ?>" class="col price">\
+                <?php echo $this->getCurrencySymbol(); ?>%5\
+              </td>\
+              <td data-th="<?php echo $block->escapeHtml(__('Link')) ?>" class="col link">\
+                  <a href="%6" class="action view" target="_blank">\
+                      <span><?php echo __('View Product') ?></span>\
+                  </a>\
+              </td>\
+          </tr>';
+                    $.each(response, function(i, data) {
+                        $('#products-range-table tbody').append(
+                            template.replace('%1', data.thumbnail)
+                                .replace('%2', data.sku)
+                                .replace(/\%3/g, data.name)
+                                .replace('%4', data.qty)
+                                .replace('%5', data.price)
+                                .replace('%6', data.url)
+                        );
+                    });
+                } else {
+                    $('.table-wrapper.products-range').hide();
+                    $('#no_products_message').show();
+                }
+            });
+
+        });
+    });
+</script>
+
+
